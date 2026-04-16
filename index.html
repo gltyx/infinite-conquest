@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conquest Simulator</title>
+    <style>
+    :root {
+        --hud-height: 40.5px;
+        --timebank-height: 32.4px;
+        --tab-strip-height: 52.2px;
+        --tab-radius: 14px;
+        --side-panel-width: clamp(300px, 28vw, 420px);
+        --safe-area-top: env(safe-area-inset-top, 0px);
+        --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+        --effective-tab-strip-height: calc(var(--tab-strip-height) + var(--safe-area-bottom));
+        --timebank-bar-height: 0px;
+        --mobile-dock-height: 0px;
+        --mobile-dock-compact-height: clamp(154px, 29.4dvh, 266px);
+    }
+
+    @media (max-width: 768px) {
+        :root {
+            --hud-height: 34.2px;
+            --timebank-height: 27.36px;
+            --tab-strip-height: 52.2px;
+            --tab-radius: 10px;
+            --effective-tab-strip-height: calc(var(--tab-strip-height) + var(--safe-area-bottom));
+        }
+    }
+
+    /* Reset moved to Tailwind @layer base in main.css */
+
+    body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background-color: #0e0b0b;
+        font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+        color: #f2e9e4;
+        touch-action: none;
+        overscroll-behavior: contain;
+    }
+
+    canvas,
+    .tab-panel,
+    .tab-panel canvas,
+    #game-container,
+    #game-container canvas {
+        touch-action: none;
+        overscroll-behavior: contain;
+    }
+
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    /* danger-button moved to main.css */
+
+    /* HUD bar styles migrated to Tailwind - see #hud-bar element */
+    .hud-cluster[hidden] {
+        display: none !important;
+    }
+
+    #fullscreen-overlay {
+        position: fixed;
+        inset: 0;
+        background: #0e0b0b;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 2600;
+    }
+
+    #fullscreen-overlay.visible {
+        display: flex;
+    }
+
+    #startup-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        padding: 24px 28px;
+        border-radius: 20px;
+        background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.12), rgba(6, 10, 16, 0.92));
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+        color: #f6f0ea;
+        text-align: center;
+        width: min(360px, 86vw);
+        min-height: 160px;
+        box-sizing: border-box;
+        font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+        line-height: 1.3;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: geometricPrecision;
+        contain: layout paint;
+    }
+
+    #startup-loading.hidden {
+        display: none;
+    }
+
+    #startup-loading .startup-title {
+        font-size: 12px;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: #ffdf74;
+    }
+
+    #startup-loading .startup-subtitle {
+        font-size: 12px;
+        color: rgba(242, 233, 228, 0.7);
+    }
+
+    .startup-spinner-wrap {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+    }
+
+    .startup-spinner {
+        width: 42px;
+        height: 42px;
+        flex: 0 0 42px;
+        box-sizing: border-box;
+        border-radius: 50%;
+        border: 3px solid rgba(255, 223, 116, 0.25);
+        border-top-color: rgba(255, 223, 116, 0.95);
+        animation: startup-spin 1s linear infinite;
+        transform-origin: 50% 50%;
+        will-change: transform;
+    }
+
+    @keyframes startup-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    /* Intro cinematic base styles migrated to main.ts inline Tailwind */
+    /* Keep state classes for JS toggling */
+    .intro-narration.visible {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+    }
+
+    @media (max-height: 640px) {
+        .intro-narration {
+            padding: 16px 18px 20px;
+            gap: 10px;
+            max-height: 90vh;
+        }
+
+        .intro-narration-illustration img {
+            max-height: clamp(170px, 34vh, 240px);
+        }
+
+        .intro-continue-button {
+            padding: 9px 20px;
+        }
+    }
+
+    /* Achievement toast migrated to Tailwind CSS */
+
+    /* HUD bar styles migrated to Tailwind CSS */
+
+    #tab-stage {
+        position: fixed;
+        top: var(--hud-height);
+        left: 0;
+        width: 100%;
+        height: calc(100vh - var(--hud-height) - var(--effective-tab-strip-height));
+        z-index: 1000;
+    }
+
+    @supports (height: 100dvh) {
+        #tab-stage {
+            height: calc(100dvh - var(--hud-height) - var(--effective-tab-strip-height));
+        }
+    }
+
+    #tab-content {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0e0b0b;
+    }
+
+    @media (min-width: 1024px) {
+        #tab-content {
+            display: grid;
+            grid-template-columns: 1fr var(--side-panel-width);
+            grid-template-rows: 1fr;
+            grid-template-areas: 'map side';
+            grid-auto-flow: column;
+        }
+    }
+
+    /* Dock tab base styles migrated to Tailwind - keeping state and pseudo-element styles */
+    .legacy-tab-hidden {
+        display: none !important;
+    }
+
+    .age-tab-hidden {
+        display: none !important;
+    }
+
+    .infinity-tab-hidden {
+        display: none !important;
+    }
+
+    .enemy-tab-hidden {
+        display: none !important;
+    }
+
+    .dock-tab.active {
+        background: #2a2322;
+        color: #f2e9e4;
+        border-color: #ff5a2f;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    }
+
+    .dock-tab.has-alert .tab-icon::after {
+        content: '';
+        position: absolute;
+        top: -3px;
+        right: -6px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #ff6b6b 0%, #ff3b30 80%);
+        box-shadow: 0 0 8px rgba(255, 59, 48, 0.85);
+        pointer-events: none;
+    }
+
+    .quest-complete-button.has-alert::after {
+        content: '';
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #ff6b6b 0%, #ff3b30 80%);
+        box-shadow: 0 0 6px rgba(255, 59, 48, 0.85);
+        border: 1px solid rgba(12, 12, 12, 0.75);
+        pointer-events: none;
+    }
+
+    .age-advance-button.has-alert::after {
+        content: '';
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #ff6b6b 0%, #ff3b30 80%);
+        box-shadow: 0 0 6px rgba(255, 59, 48, 0.85);
+        border: 1px solid rgba(12, 12, 12, 0.75);
+        pointer-events: none;
+    }
+
+    .tab-panel {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        z-index: 2;
+    }
+
+    @media (min-width: 1024px) {
+        .tab-panel {
+            position: relative;
+            inset: auto;
+            height: 100%;
+        }
+    }
+
+    .tab-panel.active {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .tab-panel {
+        height: 100%;
+    }
+
+    #map-panel {
+        width: 100%;
+        background: #0e0b0b;
+        z-index: 1;
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    @media (min-width: 1024px) {
+        #map-panel {
+            grid-column: 1;
+            grid-area: map;
+        }
+    }
+
+    @media (max-width: 1023px) {
+        #map-panel:not(.active) {
+            opacity: 0;
+            pointer-events: none;
+        }
+    }
+
+    @media (max-width: 1023px) {
+        body.mobile-dock-active #map-panel {
+            bottom: var(--mobile-dock-height);
+        }
+
+        body.timebank-active #map-panel {
+            bottom: var(--timebank-bar-height);
+        }
+
+        body.mobile-dock-active.timebank-active #map-panel {
+            bottom: calc(var(--mobile-dock-height) + var(--timebank-bar-height));
+        }
+
+        body.mobile-dock-active .tab-panel.mobile-docked {
+            inset: auto 0 0 0;
+            height: var(--mobile-dock-height);
+        }
+
+        body.timebank-active .tab-panel.mobile-docked {
+            inset: auto 0 var(--timebank-bar-height) 0;
+        }
+
+        body.mobile-dock-active.timebank-active .tab-panel.mobile-docked {
+            inset: auto 0 var(--timebank-bar-height) 0;
+        }
+
+        body.mobile-dock-active .tab-panel.mobile-docked .dock-panel-header {
+            display: none;
+        }
+
+        body.mobile-dock-active #enemy-empire-panel.mobile-docked .dock-panel-header {
+            display: flex;
+        }
+
+        body.mobile-dock-active .tab-panel.mobile-docked .enemy-empire-expanded {
+            display: none;
+        }
+    }
+
+    .side-panel {
+        background: rgba(26, 20, 20, 0.96);
+    }
+
+    @media (min-width: 1024px) {
+        .side-panel {
+            left: auto;
+            right: 0;
+            top: 0;
+            bottom: var(--timebank-bar-height);
+            height: calc(100% - var(--timebank-bar-height));
+            width: var(--side-panel-width);
+            border-left: 1px solid rgba(42, 35, 34, 0.8);
+            box-shadow: -18px 0 32px rgba(0, 0, 0, 0.55);
+            grid-column: 2;
+            grid-area: side;
+        }
+    }
+
+    #game-container,
+    #game-container canvas {
+        width: 100%;
+        height: 100%;
+    }
+
+    #stats-panel,
+    #settings-panel,
+    #debug-panel {
+        padding: 6px;
+        overflow-y: auto;
+        touch-action: auto;
+        overscroll-behavior: auto;
+    }
+
+    #settings-panel {
+        padding: 6px;
+        overflow-y: auto;
+    }
+
+    /* Base button, select, and toggle styles moved to main.css */
+
+    /* Hex dialog styles migrated to Tailwind CSS */
+    #hex-dialog-overlay.active {
+        display: flex;
+    }
+
+    #hex-dialog-canvas-container canvas {
+        width: 260px;
+        height: 240px;
+        max-width: 100%;
+        max-height: 100%;
+    }
+
+    .expression-trigger::after {
+        content: 'calc';
+        font-size: 9px;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        color: rgba(242, 233, 228, 0.85);
+        background: rgba(255, 138, 61, 0.2);
+        border-radius: 6px;
+        padding: 1px 6px;
+        margin-left: 8px;
+    }
+
+    /* Dialog overlay active states */
+    #legacy-death-dialog-overlay.active,
+    #rescale-dialog-overlay.active,
+    #legacy-html-history-overlay.active,
+    #legacy-trait-dialog-overlay.active,
+    #research-tech-dialog-overlay.active,
+    #expression-viewer-overlay.active,
+    #horde-arrival-dialog-overlay.active,
+    #horde-defeated-dialog-overlay.active,
+    #enemy-threat-dialog-overlay.active,
+    #horde-summoning-dialog-overlay.active,
+    #timebank-calc-overlay.active {
+        display: flex;
+    }
+
+    .timebank-calc-dots {
+        display: inline-block;
+        width: 1.4em;
+        overflow: hidden;
+        vertical-align: bottom;
+        animation: timebank-dots 1.2s steps(4, end) infinite;
+    }
+
+    @keyframes timebank-dots {
+        0% { width: 0; }
+        100% { width: 1.4em; }
+    }
+
+    /* Quest blink animation - used by JS for attention */
+    .quest-blink {
+        animation: quest-blink-pulse 1.1s ease-in-out infinite;
+    }
+
+    .quest-blink,
+    .quest-blink .enemy-status-label {
+        animation: quest-blink-pulse 1.1s ease-in-out infinite, quest-blink-text 1.1s ease-in-out infinite;
+    }
+
+    @keyframes quest-blink-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(214, 69, 69, 0.55); }
+        60% { box-shadow: 0 0 0 12px rgba(214, 69, 69, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(214, 69, 69, 0); }
+    }
+
+    @keyframes quest-blink-text {
+        0% { color: #f2e9e4; text-shadow: 0 0 6px rgba(214, 69, 69, 0.8); }
+        50% { color: #ffffff; text-shadow: 0 0 2px rgba(214, 69, 69, 0.4); }
+        100% { color: #f2e9e4; text-shadow: 0 0 6px rgba(214, 69, 69, 0.8); }
+    }
+
+    /* Expression node styles migrated to Tailwind in ExpressionViewer.ts */
+
+    /* Tab strip migrated to Tailwind CSS */
+
+    @media (max-width: 768px) {
+        /* HUD bar responsive styles migrated to Tailwind */
+
+        .control-columns {
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        }
+    }
+</style>
+
+  <script type="module" crossorigin src="./assets/main-DDLEq7xy.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/main-B1ABd7YC.css">
+</head>
+<body>
+    <div id="fullscreen-overlay" class="fixed inset-0 bg-bg-darkest/85 visible items-center justify-center z-[2600]" aria-hidden="false">
+    <div id="startup-loading" role="status" aria-live="polite">
+        <div class="startup-spinner-wrap" aria-hidden="true">
+            <div class="startup-spinner"></div>
+        </div>
+        <div class="startup-title">Starting game...</div>
+        <div class="startup-subtitle">Preparing the world.</div>
+    </div>
+</div>
+<div id="horde-arrival-dialog-overlay" class="fixed inset-0 hidden items-start justify-center bg-bg-darkest/80 z-[2500] pt-28 md:pt-36" aria-hidden="true">
+    <div class="w-[min(540px,92vw)] rounded-2xl border border-border/60 bg-bg-medium/95 shadow-[0_24px_60px_rgba(0,0,0,0.45)] px-6 py-5 flex flex-col gap-3">
+        <div id="horde-arrival-dialog-title" class="text-lg font-bold text-text-bright">Horde at the Border</div>
+        <div id="horde-arrival-dialog-message" class="text-sm text-text-primary"></div>
+        <div id="horde-arrival-dialog-detail" class="text-xs text-text-secondary"></div>
+        <div id="horde-arrival-dialog-event-year" class="text-xs text-text-muted">Event year: 0</div>
+        <button id="horde-arrival-dialog-close" class="mt-2 py-2 px-4 rounded-lg border border-accent-blue/80 bg-accent-blue text-bg-darkest font-bold text-[11px] tracking-wider uppercase transition-all hover:brightness-110 active:scale-95" type="button">Close</button>
+    </div>
+</div>
+<div id="horde-defeated-dialog-overlay" class="fixed inset-0 hidden items-start justify-center bg-bg-darkest/80 z-[2500] pt-28 md:pt-36" aria-hidden="true">
+    <div class="w-[min(540px,92vw)] rounded-2xl border border-border/60 bg-bg-medium/95 shadow-[0_24px_60px_rgba(0,0,0,0.45)] px-6 py-5 flex flex-col gap-3">
+        <div id="horde-defeated-dialog-title" class="text-lg font-bold text-text-bright">Horde Defeated</div>
+        <div id="horde-defeated-dialog-message" class="text-sm text-text-primary"></div>
+        <div id="horde-defeated-dialog-detail" class="text-xs text-text-secondary"></div>
+        <div id="horde-defeated-dialog-event-year" class="text-xs text-text-muted">Event year: 0</div>
+        <button id="horde-defeated-dialog-close" class="mt-2 py-2 px-4 rounded-lg border border-accent-blue/80 bg-accent-blue text-bg-darkest font-bold text-[11px] tracking-wider uppercase transition-all hover:brightness-110 active:scale-95" type="button">Close</button>
+    </div>
+</div>
+<div id="enemy-threat-dialog-overlay" class="fixed inset-0 hidden items-start justify-center bg-bg-darkest/80 z-[2500] pt-28 md:pt-36" aria-hidden="true" inert>
+    <div class="w-[min(540px,92vw)] rounded-2xl border border-border/60 bg-bg-medium/95 shadow-[0_24px_60px_rgba(0,0,0,0.45)] px-6 py-5 flex flex-col gap-3" role="dialog" aria-modal="true" aria-labelledby="enemy-threat-dialog-title">
+        <div id="enemy-threat-dialog-title" class="text-lg font-bold text-text-bright">The Border Musters</div>
+        <div id="enemy-threat-dialog-message" class="text-sm text-text-primary"></div>
+        <div id="enemy-threat-dialog-detail" class="text-xs text-text-secondary"></div>
+        <div id="enemy-threat-dialog-event-year" class="text-xs text-text-muted">Event year: 0</div>
+        <button id="enemy-threat-dialog-close" class="mt-2 py-2 px-4 rounded-lg border border-accent-blue/80 bg-accent-blue text-bg-darkest font-bold text-[11px] tracking-wider uppercase transition-all hover:brightness-110 active:scale-95" type="button">Continue</button>
+    </div>
+</div>
+<div id="horde-summoning-dialog-overlay" class="fixed inset-0 hidden items-start justify-center bg-bg-darkest/80 z-[2500] pt-28 md:pt-36" aria-hidden="true">
+    <div class="w-[min(540px,92vw)] rounded-2xl border border-border/60 bg-bg-medium/95 shadow-[0_24px_60px_rgba(0,0,0,0.45)] px-6 py-5 flex flex-col gap-3">
+        <div id="horde-summoning-dialog-title" class="text-lg font-bold text-text-bright">The Horde Stirs</div>
+        <div id="horde-summoning-dialog-message" class="text-sm text-text-primary"></div>
+        <div id="horde-summoning-dialog-detail" class="text-xs text-text-secondary"></div>
+        <div id="horde-summoning-dialog-event-year" class="text-xs text-text-muted">Event year: 0</div>
+        <button id="horde-summoning-dialog-close" class="mt-2 py-2 px-4 rounded-lg border border-accent-blue/80 bg-accent-blue text-bg-darkest font-bold text-[11px] tracking-wider uppercase transition-all hover:brightness-110 active:scale-95" type="button">Close</button>
+    </div>
+</div>
+<div id="top-toast" class="top-toast fixed top-3 left-1/2 -translate-x-1/2 -translate-y-[140%] py-3 px-7 rounded-full flex flex-col items-center gap-1 min-w-[260px] max-w-[420px] z-[2200] opacity-0 pointer-events-none text-center transition-all duration-300 ease-out">
+    <div id="top-toast-label" class="toast-label">Notification</div>
+    <div id="top-toast-title"></div>
+    <div id="top-toast-detail"></div>
+</div>
+
+    <header id="hud-bar" class="fixed top-0 left-0 w-full h-[var(--hud-height)] bg-bg-dark/90 shadow-[0_2px_12px_rgba(0,0,0,0.35)] flex items-center justify-start z-[1200] overflow-x-auto">
+    <div class="flex items-start gap-3 ml-3">
+        <div class="hud-cluster flex flex-col gap-0">
+            <span class="hud-label uppercase tracking-wide text-text-muted">Year</span>
+            <span id="game-year" class="hud-value text-[8px] md:text-[13px] leading-none font-bold text-accent-blue">0.0</span>
+        </div>
+        <div class="hud-cluster flex flex-col gap-0">
+            <span class="hud-label uppercase tracking-wide text-text-muted">Population</span>
+            <div class="hud-values flex items-baseline gap-1">
+                <span id="population-total" class="hud-value text-[8px] md:text-[13px] leading-none font-bold text-accent-blue">0</span>
+                <span id="population-growth-total" class="hud-subvalue text-[8px] md:text-[13px] leading-none text-text-muted">0/s</span>
+            </div>
+        </div>
+        <div class="hud-cluster flex flex-col gap-0">
+            <span class="hud-label uppercase tracking-wide text-text-muted">Research</span>
+            <div class="hud-values flex items-baseline gap-1">
+                <span id="research-total" class="hud-value text-[8px] md:text-[13px] leading-none font-bold text-accent-blue">0</span>
+                <span id="research-rate" class="hud-subvalue text-[8px] md:text-[13px] leading-none text-text-muted">0/s</span>
+            </div>
+        </div>
+        <div class="hud-cluster flex flex-col gap-0" id="player-troops-cluster" hidden>
+            <span class="hud-label uppercase tracking-wide text-text-muted">Troops</span>
+            <div class="hud-values flex items-baseline gap-1">
+                <span id="player-troops" class="hud-value text-[8px] md:text-[13px] leading-none font-bold text-accent-blue">0</span>
+                <span id="player-troops-rate" class="hud-subvalue text-[8px] md:text-[13px] leading-none text-text-muted">0/s</span>
+            </div>
+        </div>
+        <div class="hud-cluster flex flex-col gap-0">
+            <span class="hud-label uppercase tracking-wide text-text-muted">Area</span>
+            <span id="empire-area" class="hud-value text-[8px] md:text-[13px] leading-none font-bold text-accent-blue">0</span>
+        </div>
+    </div>
+</header>
+
+    <main id="tab-stage">
+    <div id="tab-content">
+        <div id="map-panel" class="tab-panel active" data-tab-panel="map">
+            <div id="game-container"></div>
+        </div>
+        <div id="enemy-empire-panel" class="tab-panel side-panel" data-tab-panel="enemy-empire">
+            <div class="flex flex-col h-full">
+                <div class="dock-panel-header sticky top-0 z-10 bg-bg-medium/95 border-b border-border/60 px-3h py-2h flex flex-col gap-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <button id="enemy-empire-prev" class="w-7 h-7 rounded-lg bg-bg-dark text-text-secondary hover:text-text-bright hover:bg-bg-darkest disabled:opacity-40 inline-flex items-center justify-center" type="button" aria-label="Previous enemy empire">◀</button>
+                        <div class="flex flex-col items-center text-center flex-1 min-w-0">
+                            <div id="enemy-empire-name" class="text-sm font-bold text-text-bright">Enemy Empire</div>
+                            <div id="enemy-empire-meta" class="text-xs text-text-secondary">0 hexes • 0 troops</div>
+                        </div>
+                        <div id="enemy-empire-header-pattern-card" class="hidden enemy-empire-pattern-card enemy-empire-pattern-card-header self-stretch">
+                            <div id="enemy-empire-header-pattern-frame" class="enemy-empire-pattern-frame enemy-empire-pattern-frame-header" style="--enemy-empire-pattern-color: #ffffff;">
+                                <canvas id="enemy-empire-header-pattern-image" class="enemy-empire-pattern-image" aria-label="Enemy empire crest"></canvas>
+                            </div>
+                        </div>
+                        <button id="enemy-empire-next" class="w-7 h-7 rounded-lg bg-bg-dark text-text-secondary hover:text-text-bright hover:bg-bg-darkest disabled:opacity-40 inline-flex items-center justify-center" type="button" aria-label="Next enemy empire">▶</button>
+                    </div>
+                    <div class="enemy-dialog-actions flex gap-2 items-stretch flex-nowrap">
+                        <button class="enemy-status-button py-1h px-2 rounded-lg border border-transparent bg-bg-medium/95 text-text-primary text-[9px] font-bold tracking-wide uppercase transition-all min-w-0 flex-1 inline-flex flex-col items-center justify-center gap-0 min-h-[32px] data-[state=war]:bg-danger data-[state=war]:border-danger data-[state=war]:text-bg-darkest data-[state=peace]:border-success data-[state=peace]:bg-success data-[state=peace]:text-bg-darkest data-[state=conquered]:bg-bg-medium data-[state=conquered]:border-text-muted data-[state=conquered]:text-text-secondary data-[state=queued]:bg-bg-medium data-[state=queued]:border-text-muted data-[state=queued]:text-bg-medium disabled:opacity-60 disabled:cursor-not-allowed" id="enemy-empire-status" type="button" data-state="war">
+                            <span class="enemy-status-label text-[9px] text-center whitespace-normal leading-[10px] h-[20px] overflow-hidden flex items-center justify-center">DECLARE WAR</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto px-2h py-2h flex flex-col gap-2h">
+                    <div id="enemy-empire-empty" class="hidden text-xs text-text-muted bg-bg-dark/70 border border-border/50 rounded-lg px-3h py-2h">
+                        No enemy empire selected.
+                    </div>
+                    <div class="enemy-frontline-row flex flex-nowrap items-stretch gap-2 w-full min-w-0">
+                        <div class="enemy-frontline-stats flex flex-col gap-0 flex-1 min-w-0">
+                            <div class="enemy-frontline-card player flex items-center justify-between px-2 py-0h">
+                                <span class="enemy-frontline-label text-[10px] tracking-wide uppercase text-text-muted">Your Frontline</span>
+                                <div class="enemy-frontline-values flex flex-col items-end">
+                                    <div class="enemy-frontline-main flex items-baseline gap-1">
+                                        <span class="enemy-frontline-value text-[12px] font-bold text-gold-bright tabular-nums text-right" id="enemy-empire-player-front">0</span>
+                                        <span class="enemy-frontline-add text-[12px] font-bold text-success tabular-nums" id="enemy-empire-player-front-add">+0</span>
+                                        <span class="enemy-frontline-loss text-[12px] font-bold text-danger tabular-nums" id="enemy-empire-player-front-loss">-0</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="enemy-frontline-card enemy flex items-center justify-between px-2 py-0h">
+                                <span class="enemy-frontline-label text-[10px] tracking-wide uppercase text-text-muted">Enemy Frontline</span>
+                                <div class="enemy-frontline-values flex flex-col items-end">
+                                    <div class="enemy-frontline-main flex items-baseline gap-1">
+                                        <span class="enemy-frontline-value text-[12px] font-bold text-text-secondary tabular-nums text-right" id="enemy-empire-enemy-front">0</span>
+                                        <span class="enemy-frontline-add text-[12px] font-bold text-success tabular-nums" id="enemy-empire-enemy-front-add">+0</span>
+                                        <span class="enemy-frontline-loss text-[12px] font-bold text-danger tabular-nums" id="enemy-empire-enemy-front-loss">-0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="enemy-empire-defense-controls" class="hidden flex flex-none items-center gap-1 px-2 py-1h">
+                            <div class="relative">
+                                <button class="enemy-status-button py-1h px-2 rounded-lg border border-transparent bg-bg-medium/95 text-text-primary text-[9px] font-bold tracking-wide uppercase transition-all min-w-0 inline-flex flex-col items-center justify-center gap-0 min-h-[32px] data-[state=normal]:bg-danger data-[state=normal]:border-danger data-[state=normal]:text-bg-darkest data-[state=defense]:bg-sky-500 data-[state=defense]:border-sky-500 data-[state=defense]:text-white disabled:opacity-60 disabled:cursor-not-allowed" id="enemy-empire-defense" type="button" data-state="normal">
+                                    <span id="enemy-empire-defense-label" class="text-[9px] text-center whitespace-normal leading-[10px] h-[10px] overflow-hidden flex items-center justify-center">ATTACKING</span>
+                                    <span id="enemy-empire-defense-detail" class="text-[8px] text-text-secondary leading-[8px] min-h-[8px] max-h-[8px] overflow-hidden text-center normal-case font-normal">&nbsp;</span>
+                                </button>
+                                <button id="enemy-empire-defense-badge" class="alert-badge-button hidden" type="button" aria-label="Dismiss defense badge" title="Dismiss"></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="enemy-empire-expanded flex flex-col gap-2">
+                        <div class="enemy-frontline-card leadership flex items-center justify-between px-2 py-0h">
+                            <span class="enemy-frontline-label text-[10px] tracking-wide uppercase text-text-muted">Distance Penalty</span>
+                            <span class="enemy-frontline-value text-[12px] font-bold text-gold-bright tabular-nums text-right" id="enemy-empire-leadership-range">—</span>
+                        </div>
+                        <div class="enemy-troop-stats flex flex-wrap gap-2">
+                            <div class="enemy-troop-card player bg-bg-darkest/50 border border-accent-blue/30 rounded-lg px-3 py-2">
+                                <span class="enemy-troop-card-label text-[8px] tracking-wide uppercase text-accent-blue font-medium">Your Troop Stats</span>
+                                <dl class="grid grid-cols-[auto_auto] gap-x-3 gap-y-0h m-0 mt-1 text-[10px]">
+                                    <dt class="uppercase tracking-wide text-text-muted">Attack</dt><dd class="m-0 font-semibold text-accent-blue tabular-nums text-right" id="enemy-empire-player-attack">0</dd>
+                                    <dt class="uppercase tracking-wide text-text-muted">Defense</dt><dd class="m-0 font-semibold text-accent-blue tabular-nums text-right" id="enemy-empire-player-defense">0</dd>
+                                    <dt class="uppercase tracking-wide text-text-muted">HP</dt><dd class="m-0 font-semibold text-accent-blue tabular-nums text-right" id="enemy-empire-player-hp">0</dd>
+                                </dl>
+                            </div>
+                            <div class="enemy-troop-card enemy bg-bg-darkest/50 border border-danger/30 rounded-lg px-3 py-2">
+                                <span class="enemy-troop-card-label text-[8px] tracking-wide uppercase text-danger font-medium">Enemy Troop Stats</span>
+                                <dl class="grid grid-cols-[auto_auto] gap-x-3 gap-y-0h m-0 mt-1 text-[10px]">
+                                    <dt class="uppercase tracking-wide text-text-muted">Attack</dt><dd class="m-0 font-semibold text-danger tabular-nums text-right" id="enemy-empire-enemy-attack">0</dd>
+                                    <dt class="uppercase tracking-wide text-text-muted">Defense</dt><dd class="m-0 font-semibold text-danger tabular-nums text-right" id="enemy-empire-enemy-defense">0</dd>
+                                    <dt class="uppercase tracking-wide text-text-muted">HP</dt><dd class="m-0 font-semibold text-danger tabular-nums text-right" id="enemy-empire-enemy-hp">0</dd>
+                                </dl>
+                            </div>
+                        </div>
+                        <div id="enemy-empire-offense-budget" class="hidden enemy-budget-card">
+                            <div class="enemy-budget-header">
+                                <span class="enemy-budget-title">Troop Split</span>
+                                <span id="enemy-empire-offense-budget-lock" class="enemy-budget-lock hidden">Horde</span>
+                            </div>
+                            <div class="enemy-budget-meter">
+                                <span id="enemy-empire-defense-budget-value" class="enemy-budget-chip enemy-budget-chip-defense">DEF 0%</span>
+                                <input id="enemy-empire-offense-budget-input" class="enemy-budget-slider" type="range" min="0" max="100" step="1" value="100" aria-label="Set offense budget percent">
+                                <span id="enemy-empire-offense-budget-value" class="enemy-budget-chip enemy-budget-chip-offense">OFF 100%</span>
+                            </div>
+                        </div>
+                        <div id="enemy-empire-threat" class="relative hidden bg-bg-darkest/50 border border-border/50 rounded-lg px-3 py-2 flex items-center justify-between">
+                            <span class="text-[9px] uppercase tracking-wide text-text-muted">Threat</span>
+                            <span id="enemy-empire-threat-value" class="text-[12px] font-bold text-text-bright tabular-nums text-right">0</span>
+                            <button id="enemy-empire-threat-badge" class="alert-badge-button hidden" type="button" aria-label="Dismiss threat badge" title="Dismiss"></button>
+                        </div>
+                        <div id="enemy-empire-horde-timer" class="relative hidden bg-bg-darkest/50 border border-border/50 rounded-lg px-3 py-2 flex items-center justify-between">
+                            <span class="text-[9px] uppercase tracking-wide text-text-muted">Next Horde</span>
+                            <span id="enemy-empire-horde-timer-value" class="text-[12px] font-bold text-text-bright tabular-nums text-right">—</span>
+                            <button id="enemy-empire-horde-badge" class="alert-badge-button hidden" type="button" aria-label="Dismiss horde timer badge" title="Dismiss"></button>
+                        </div>
+                    </div>
+                    <div id="enemy-empire-pattern-card" class="hidden enemy-empire-pattern-card">
+                        <div class="text-[10px] text-text-muted tracking-wide uppercase mb-1h">Crest</div>
+                        <div id="enemy-empire-pattern-frame" class="enemy-empire-pattern-frame" style="--enemy-empire-pattern-color: #ffffff;">
+                            <canvas id="enemy-empire-pattern-image" class="enemy-empire-pattern-image" aria-label="Enemy empire crest"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="legacy-html-panel" class="tab-panel side-panel" data-tab-panel="legacy-html">
+            <div class="flex flex-col h-full">
+                <div class="dock-panel-header sticky top-0 z-10 bg-bg-medium/95 border-b border-border/60 px-3h py-3h flex flex-col gap-1h">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex items-start gap-2">
+                            <span class="text-2xl" aria-hidden="true">👑</span>
+                            <div class="flex flex-col">
+                                <div id="legacy-html-ruler-name" class="text-base font-bold text-text-bright">Loading...</div>
+                                <div id="legacy-html-ruler-title" class="text-sm italic text-text-secondary"></div>
+                            </div>
+                        </div>
+                        <button id="legacy-html-history-button" class="text-lg text-text-secondary hover:text-text-bright" type="button" aria-label="View dynasty history" title="Dynasty history">📜</button>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                        <div id="legacy-html-points" class="text-gold-bright font-bold">✦ 0 Legacy Points</div>
+                        <div id="legacy-html-reign" class="text-text-muted">Reign #1</div>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <div id="legacy-html-caps" class="text-text-muted"></div>
+                        <div></div>
+                    </div>
+                    <div class="flex items-center justify-end gap-2">
+                        <button id="legacy-html-sort-button" class="text-[11px] font-bold uppercase tracking-wide border border-border/60 rounded-md px-3h py-1h bg-bg-dark text-text-primary hover:bg-bg-darkest" type="button" aria-pressed="false">Cost Sort</button>
+                        <button id="legacy-html-view-button" class="text-[11px] font-bold uppercase tracking-wide border border-border/60 rounded-md px-3h py-1h bg-bg-dark text-text-primary hover:bg-bg-darkest" type="button" aria-pressed="false">Full Cards</button>
+                    </div>
+                </div>
+                <div id="legacy-html-traits" class="scrollbar-restore flex-1 overflow-y-auto px-2h py-0 grid grid-cols-2 gap-2h auto-rows-max content-start"></div>
+            </div>
+        </div>
+        <div id="age-html-panel" class="tab-panel side-panel" data-tab-panel="age">
+            <div class="flex flex-col h-full">
+                <div class="dock-panel-header sticky top-0 z-10 bg-bg-medium/95 border-b border-border/60 px-3h py-2h flex items-center gap-2">
+                    <span class="text-xl" aria-hidden="true">🪨</span>
+                    <div class="flex flex-col">
+                        <div class="text-sm font-bold text-text-bright">Age</div>
+                        <div class="text-xs text-text-secondary">Advance to reshape the world</div>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto px-2h py-2h flex flex-col gap-2h">
+                    <div class="bg-bg-dark/85 border border-border/60 rounded-xl p-3h flex flex-col gap-1h">
+                        <div class="text-[11px] uppercase tracking-wide text-text-muted">Current Age</div>
+                        <div id="age-current-name" class="text-base font-bold text-text-bright">Age of Embers</div>
+                        <div id="age-current-desc" class="text-xs text-text-secondary">...</div>
+                    </div>
+                    <div class="bg-bg-medium/90 border border-border/60 rounded-xl p-3h flex flex-col gap-2h">
+                        <div class="text-[11px] uppercase tracking-wide text-text-muted">Next Age</div>
+                        <div id="age-next-name" class="text-base font-bold text-text-bright">Age of Carved Stone</div>
+                        <div id="age-next-desc" class="text-xs text-text-secondary">...</div>
+                        <div class="text-xs text-text-secondary">
+                            <span class="font-semibold text-text-bright">Bonus:</span>
+                            <span id="age-next-bonus">...</span>
+                        </div>
+                        <div id="age-next-status" class="text-xs text-text-muted">Complete the age quest to unlock.</div>
+                        <button id="age-advance-button" class="age-advance-button relative mt-1h border border-border/60 rounded-lg px-3h py-2h bg-bg-dark text-text-primary hover:bg-bg-darkest disabled:opacity-60 disabled:cursor-not-allowed" type="button">Advance Age</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="infinity-html-panel" class="tab-panel side-panel" data-tab-panel="infinity-html">
+            <div class="flex flex-col h-full">
+                <div class="dock-panel-header sticky top-0 z-10 bg-bg-medium/95 border-b border-border/60 px-3h py-2h flex items-center gap-2">
+                    <span class="text-xl" aria-hidden="true">♾️</span>
+                    <div class="flex flex-col">
+                        <div class="text-sm font-bold text-text-bright">Infinity</div>
+                        <div class="text-xs text-text-secondary">Endless conquest begins here</div>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto px-2h py-2h flex flex-col gap-2h">
+                    <div class="bg-bg-medium/90 border border-border/60 rounded-xl p-3h flex flex-col gap-2h">
+                        <button id="infinity-html-start-button" class="border border-border/60 rounded-lg px-3h py-2h bg-bg-dark text-text-primary hover:bg-bg-darkest disabled:opacity-60 disabled:cursor-not-allowed" type="button">Start Infinity Mode</button>
+                        <div id="infinity-html-status" class="text-xs text-text-muted">Infinity mode dormant.</div>
+                    </div>
+                    <div class="bg-bg-dark/85 border border-border/60 rounded-xl p-3h flex flex-col gap-2h">
+                        <div class="text-[11px] uppercase tracking-wide text-text-muted">Current Scale State</div>
+                        <div class="grid grid-cols-[auto_auto] gap-x-3 gap-y-1 text-xs">
+                            <div class="text-text-secondary">Rescales</div><div id="infinity-html-rescale-count" class="text-right font-bold text-text-bright">0</div>
+                            <div class="text-text-secondary">Hex Span</div><div id="infinity-html-hex-span" class="text-right font-bold text-text-bright">0</div>
+                            <div class="text-text-secondary">Hex Area</div><div id="infinity-html-hex-area" class="text-right font-bold text-text-bright">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="research-html-panel" class="tab-panel side-panel" data-tab-panel="research-html">
+            <div class="flex flex-col h-full">
+                <div class="dock-panel-header sticky top-0 z-10 bg-bg-medium/95 border-b border-border/60 px-3h py-2h flex flex-col gap-2h">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xl" aria-hidden="true">🧪</span>
+                            <div class="flex flex-col">
+                                <div class="text-sm font-bold text-text-bright">Research</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button id="research-html-sort-button" class="text-[11px] font-bold uppercase tracking-wide border border-border/60 rounded-md px-3h py-1h bg-bg-dark text-text-primary hover:bg-bg-darkest" type="button" aria-pressed="false">Cost Sort</button>
+                            <button id="research-html-view-button" class="text-[11px] font-bold uppercase tracking-wide border border-border/60 rounded-md px-3h py-1h bg-bg-dark text-text-primary hover:bg-bg-darkest" type="button" aria-pressed="false">Full Cards</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        <div id="research-html-points" class="text-gold-bright font-bold">0.00 RP</div>
+                        <div id="research-html-per-tick" class="text-text-muted">+0.00/sec</div>
+                    </div>
+                </div>
+                <div id="research-html-techs" class="flex-1 overflow-y-auto px-0 py-0 grid grid-cols-2 gap-2h auto-rows-max content-start"></div>
+            </div>
+        </div>
+        <div id="achievements-html-panel" class="tab-panel side-panel" data-tab-panel="achievements-html">
+            <div class="flex flex-col h-full">
+                <div class="sticky top-0 z-10 bg-bg-dark/95 border-b border-border/60 px-3h py-2h flex flex-col gap-1h">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xl" aria-hidden="true">🏆</span>
+                            <div class="flex flex-col">
+                                <div class="text-sm font-bold text-text-bright">Achievements</div>
+                                <div id="achievements-html-subtitle" class="text-xs text-text-secondary">0/0 unlocked</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="achievements-html-list" class="scrollbar-restore flex-1 overflow-y-auto px-2h py-2h flex flex-col gap-2h"></div>
+            </div>
+        </div>
+        <div id="quests-panel" class="tab-panel side-panel" data-tab-panel="quests">
+            <div class="flex flex-col h-full">
+                <div class="dock-panel-header sticky top-0 z-10 bg-bg-medium/95 border-b border-border/60 px-3h py-2h flex items-center gap-2">
+                    <span class="text-xl" aria-hidden="true">🧭</span>
+                    <div class="flex flex-col">
+                        <div class="text-sm font-bold text-text-bright" id="quests-panel-title">Quests</div>
+                        <div class="text-xs text-text-secondary" id="quests-panel-subtitle">0/0 completed</div>
+                    </div>
+                </div>
+                <div class="scrollbar-restore flex-1 overflow-y-auto px-2h py-2h flex flex-col gap-2h">
+                    <div id="quests-panel-current" class="quests-panel-section"></div>
+                    <div id="quests-panel-completed" class="quests-panel-section"></div>
+                </div>
+            </div>
+        </div>
+        <div id="stats-panel" class="tab-panel side-panel scrollbar-restore panel-scroll" data-tab-panel="stats">
+            <div class="settings-panel">
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h3>Progress Stats</h3>
+                    </div>
+                    <div id="stats-important-totals" class="stats-grid">
+                        <div class="stat-line"><span>Total Research Multiplier</span><span id="stats-research-multiplier">1.00x</span></div>
+                        <div class="stat-line"><span>Total Attack Multiplier</span><span id="stats-attack-multiplier">1.00x</span></div>
+                        <div class="stat-line"><span>Peak Population</span><span id="stats-peak-population">0</span></div>
+                        <div class="stat-line"><span>Max Troops Reached</span><span id="stats-max-troops-reached">0</span></div>
+                        <div class="stat-line"><span>Max Supported Troops (Hard Cap)</span><span id="stats-max-supported-troops">0</span></div>
+                        <div class="stat-line"><span>Total Population Produced</span><span id="stats-total-pop-produced">0</span></div>
+                        <div class="stat-line"><span>Total Owned Hexes</span><span id="stats-owned-hexes">0</span></div>
+                        <div class="stat-line"><span>Total Captured Area</span><span id="stats-total-captured-area">0</span></div>
+                        <div class="stat-line"><span>Max Distance Reached</span><span id="stats-max-capital-distance">0</span></div>
+                        <div class="stat-line"><span>Kept Population</span><span id="stats-kept-population">0</span></div>
+                        <div class="stat-line"><span>Kept Troops</span><span id="stats-kept-troops">0</span></div>
+                        <div class="stat-line"><span>Core Kept Area</span><span id="stats-kept-hexes">7</span></div>
+                        <div class="stat-line"><span>Leadership Decay Delay (hexes)</span><span id="stats-leadership-decay-delay-hexes">0</span></div>
+                        <div class="stat-line"><span>Leadership Decay Delay</span><span id="stats-leadership-decay-delay-meters">0</span></div>
+                        <div class="stat-line"><span>Hex Span</span><span id="stats-hex-span-meters">0</span></div>
+                        <div class="stat-line"><span>Hex Area</span><span id="stats-hex-area-sqm">0</span></div>
+                        <div class="stat-line"><span>Empire Total Area</span><span id="stats-empire-area-sqm">0</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="settings-panel" class="tab-panel side-panel scrollbar-restore" data-tab-panel="settings">
+            <div class="settings-panel">
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h3>Game Management</h3>
+                    </div>
+                    <div class="settings-actions">
+                        <button id="settings-save-game">Save Game
+                            <span id="settings-save-autosave-countdown" class="settings-autosave-countdown">Autosave in --s</span>
+                        </button>
+                        <button id="settings-load-game">Load Game</button>
+                    </div>
+                    <div class="settings-actions">
+                        <button id="settings-export-obfuscated">Save to File</button>
+                        <button id="settings-load-obfuscated">Load from File</button>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <button id="settings-toggle-changelog">Show Updates</button>
+                    <div id="settings-changelog" class="settings-changelog" aria-hidden="true"></div>
+                </div>
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h3>Community</h3>
+                    </div>
+                    <div class="settings-row settings-row-community">
+                        <a id="settings-open-discord" class="discord-link-button" href="https://discord.gg/uqhWUnyHa4" target="_blank" rel="noopener noreferrer" aria-label="Open the Conquest Discord server" title="Open Discord">
+                            <span class="discord-link-button-badge" aria-hidden="true">
+                                <svg class="discord-link-button-icon" viewBox="0 0 127.14 96.36" focusable="false">
+                                    <path fill="currentColor" d="M107.7 8.07A105.15 105.15 0 0 0 81.47 0a72.06 72.06 0 0 0-3.36 6.83 97.68 97.68 0 0 0-29.11 0A72.37 72.37 0 0 0 45.64 0 105.89 105.89 0 0 0 19.39 8.09C2.79 32.65-1.71 56.6.54 80.21h.02a105.73 105.73 0 0 0 32.17 16.15 77.7 77.7 0 0 0 6.89-11.23 68.42 68.42 0 0 1-10.84-5.18c.91-.66 1.8-1.34 2.66-2.04a75.57 75.57 0 0 0 64.32 0c.87.71 1.76 1.39 2.66 2.04a68.68 68.68 0 0 1-10.87 5.19 77 77 0 0 0 6.89 11.22A105.25 105.25 0 0 0 126.6 80.22h.02c2.64-27.29-4.51-50.98-18.92-72.15ZM42.45 65.69C36.18 65.69 31 59.98 31 52.97c0-7 5.05-12.72 11.45-12.72 6.46 0 11.57 5.78 11.45 12.72 0 7.01-5.05 12.72-11.45 12.72Zm42.24 0c-6.27 0-11.45-5.71-11.45-12.72 0-7 5.05-12.72 11.45-12.72 6.46 0 11.57 5.78 11.45 12.72 0 7.01-5.05 12.72-11.45 12.72Z" />
+                                </svg>
+                            </span>
+                            <span class="discord-link-button-text">Join Discord</span>
+                        </a>
+                    </div>
+                    <div id="settings-discord-fallback" class="hidden mt-2 rounded-lg border border-border/70 bg-bg-dark/80 p-3h flex flex-col gap-2h" aria-hidden="true">
+                        <div class="text-xs text-text-secondary leading-relaxed">
+                            Galaxy may block direct Discord tabs from the embedded game. Copy this invite and open it in your browser.
+                        </div>
+                        <input id="settings-discord-fallback-url" class="input text-xs" type="text" value="https://discord.gg/uqhWUnyHa4" readonly spellcheck="false" aria-label="Discord invite URL" />
+                        <div class="text-[11px] text-text-muted leading-relaxed">
+                            If copy fails on mobile, tap and hold the link field to copy it manually.
+                        </div>
+                        <div class="settings-actions">
+                            <button id="settings-copy-discord-link" type="button">Copy Invite</button>
+                            <button id="settings-hide-discord-fallback" type="button">Hide</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section" id="achievement-filter-control">
+                    <div class="settings-section-header">
+                        <h3>Preferences</h3>
+                    </div>
+                    <label class="settings-toggle">
+                        <span>Hide unlocked achievements</span>
+                        <input type="checkbox" id="achievement-filter-toggle" />
+                        <span class="toggle-indicator" data-enabled="On" data-disabled="Off"></span>
+                    </label>
+                    <label class="settings-toggle">
+                        <span>Hide completed research</span>
+                        <input type="checkbox" id="research-hide-completed-toggle" />
+                        <span class="toggle-indicator" data-enabled="On" data-disabled="Off"></span>
+                    </label>
+                    <label class="settings-toggle">
+                        <span>Hide completed legacy traits</span>
+                        <input type="checkbox" id="legacy-hide-completed-toggle" />
+                        <span class="toggle-indicator" data-enabled="On" data-disabled="Off"></span>
+                    </label>
+                    <label class="settings-toggle">
+                        <span>Number format</span>
+                        <select id="settings-number-format" class="select w-[140px]">
+                            <option value="compact" selected>Compact (80k)</option>
+                            <option value="scientific">Scientific (8.00e4)</option>
+                        </select>
+                    </label>
+                    <div class="settings-note"></div>
+                </div>
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h3>Map Visuals</h3>
+                        <p>Toggle route overlays.</p>
+                    </div>
+                    <div class="settings-actions">
+                        <button id="settings-toggle-troop-paths" class="overlay-toggle-button" aria-pressed="false">Troop Paths</button>
+                        <button id="settings-toggle-population-paths" class="overlay-toggle-button" aria-pressed="true">Population Paths</button>
+                        <button id="settings-toggle-population-numbers" class="overlay-toggle-button" aria-pressed="true">Hide Population Numbers</button>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <div class="settings-section-header">
+                        <h3>Audio</h3>
+                        <p>Enable or mute game notifications.</p>
+                    </div>
+                    <label class="settings-toggle">
+                        <span>Game Sounds</span>
+                        <input type="checkbox" id="settings-sound-toggle" checked />
+                        <span class="toggle-indicator" data-enabled="Yes" data-disabled="No"></span>
+                    </label>
+                </div>
+                <div class="settings-section">
+                    <button id="settings-reset-game" class="danger-button">Reset Game</button>
+                </div>
+            </div>
+        </div>
+        <div id="debug-panel" class="tab-panel side-panel scrollbar-restore" data-tab-panel="debug">
+            <div class="control-columns">
+                <div class="control-column">
+                    <div class="control-group">
+                        <label class="control-label" for="tick-interval">Tick Interval</label>
+                        <select id="tick-interval" class="select w-[120px]">
+                            <option value="500">0.5s</option>
+                            <option value="1000" selected>1s (default)</option>
+                            <option value="2000">2s</option>
+                            <option value="4000">4s</option>
+                        </select>
+                        <button id="inject-tick-delta">+100s delta</button>
+                    </div>
+                </div>
+                <div class="control-column dual">
+                    <button id="rescale-map">Rescale Map (1.5:1)</button>
+                </div>
+                <div class="control-column">
+                    <button id="debug-add-legacy">+100,000 LP</button>
+                    <button id="debug-add-research">+100,000 Research</button>
+                    <button id="debug-add-troops">+1,000 Troops (Capital)</button>
+                </div>
+                <div class="control-column dual">
+                    <button id="save-game">Save Game</button>
+                    <button id="load-game">Load Game</button>
+                </div>
+                <div class="control-column dual">
+                    <button id="toggle-troop-paths" class="overlay-toggle-button" aria-pressed="false">Troop Paths</button>
+                    <button id="toggle-population-paths" class="overlay-toggle-button active" aria-pressed="true">Population Paths</button>
+                </div>
+                <div class="control-column">
+                    <button id="overlay-mode-population" class="overlay-toggle-button active" aria-pressed="true">Population Overlay</button>
+                </div>
+                <div class="control-column">
+                    <button id="toggle-expression-viewer" class="overlay-toggle-button" aria-pressed="false">Expression Viewer</button>
+                </div>
+                <div class="control-column">
+                    <button id="toggle-map-visibility">Show Whole Map</button>
+                </div>
+                <div class="control-column">
+                    <div class="control-group">
+                        <label class="control-label" for="debug-per-tick-save-toggle">Per-Tick Saves</label>
+                        <label class="settings-toggle">
+                            <span>Save every tick (20-slot ring)</span>
+                            <input type="checkbox" id="debug-per-tick-save-toggle">
+                            <span class="toggle-indicator" data-enabled="On" data-disabled="Off"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="control-column">
+                    <div class="control-group">
+                        <label class="control-label" for="debug-player-route-numbers-toggle">Player Route Numbers</label>
+                        <label class="settings-toggle">
+                            <span>Show red player troop path numbers</span>
+                            <input type="checkbox" id="debug-player-route-numbers-toggle">
+                            <span class="toggle-indicator" data-enabled="On" data-disabled="Off"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="control-column">
+                    <button id="kill-sovereign" style="background-color: #d64545;">☠️ Kill Sovereign</button>
+                </div>
+                <div class="control-column">
+                    <button id="summon-horde" style="background-color: #6b2f2f;">⚔️ Summon Horde</button>
+                </div>
+                <div class="control-column">
+                    <button id="test-animation" style="background-color: #ff8a3d;">▶ Prologue Cinematic</button>
+                </div>
+            </div>
+            <div id="debug-important-totals" class="stats-grid">
+                <div class="stat-line heading">
+                    <span>Important Totals</span>
+                </div>
+                <div class="stat-line"><span>Build Version</span><span id="build-version">-</span></div>
+                <div class="stat-line"><span>Root Seed</span><span id="root-seed">-</span></div>
+                <div class="stat-line"><span>Manual Allocation</span><span id="manual-allocation">0%</span></div>
+                <div class="stat-line"><span>Visible Hexes</span><span id="visible-count">0</span></div>
+                <div class="stat-line"><span>Max Radius</span><span id="max-radius">0</span></div>
+                <div class="stat-line"><span>Max Player Radius</span><span id="max-player-radius">0</span></div>
+                <div class="stat-line"><span>Rescales</span><span id="rescale-count">0</span></div>
+                <div class="stat-line"><span>Base Hex Span (m)</span><span id="base-hex-span-meters">0</span></div>
+                <div class="stat-line"><span>Hex Span (m)</span><span id="hex-span-meters">0</span></div>
+                <div class="stat-line"><span>Hex Area</span><span id="hex-area-sqm">0</span></div>
+                <div class="stat-line"><span>Meters / Tick</span><span id="meters-per-tick">0</span></div>
+                <div class="stat-line"><span>Game Ticks</span><span id="game-tick-counter">0</span></div>
+                <div class="stat-line"><span>Session Ticks</span><span id="session-tick-counter">0</span></div>
+                <div class="stat-line"><span>Troops Killed</span><span id="lifetime-troops-killed">0</span></div>
+                <div class="stat-line"><span>Troops Lost</span><span id="lifetime-troops-lost">0</span></div>
+                <div class="stat-line"><span>Empires Conquered</span><span id="lifetime-empires-conquered">0</span></div>
+                <div class="stat-line"><span>Max Population</span><span id="lifetime-max-population">0</span></div>
+                <div class="stat-line"><span>Total Population Created</span><span id="lifetime-pop-created">0</span></div>
+                <div class="stat-line"><span>Total Hexes Captured</span><span id="lifetime-hexes-captured">0</span></div>
+            </div>
+            <div id="perf-stats" class="perf-stats">
+                <div class="stat-line"><span>FPS</span><span id="perf-fps">0</span></div>
+                <div class="stat-line"><span>Logic</span><span id="perf-logic">0ms</span></div>
+                <div class="stat-line"><span>Render</span><span id="perf-render">0ms</span></div>
+                <div class="stat-line"><span>Obj</span><span id="perf-objects">0</span></div>
+                <div class="stat-line"><span>Mem</span><span id="perf-memory">0MB</span></div>
+                <div class="stat-line"><span>Supply</span><span id="perf-supply">0ms</span></div>
+                <div class="stat-line"><span>Research</span><span id="perf-research">0ms</span></div>
+                <div class="stat-line"><span>Player</span><span id="perf-player-prod">0ms</span></div>
+                <div class="stat-line"><span>Routing</span><span id="perf-route-front">0ms</span></div>
+                <div class="stat-line"><span>Enemy</span><span id="perf-enemy-prod">0ms</span></div>
+                <div class="stat-line"><span>Combat</span><span id="perf-combat">0ms</span></div>
+                <div class="stat-line"><span>Upkeep</span><span id="perf-combat-upkeep">0ms</span></div>
+                <div class="stat-line"><span>Refresh</span><span id="perf-combat-refresh">0ms</span></div>
+                <div class="stat-line"><span>Achv</span><span id="perf-achievements">0ms</span></div>
+                <div class="stat-line"><span>Tick</span><span id="perf-tick-total">0ms</span></div>
+                <div class="stat-line"><span>Ticks</span><span id="perf-tick-iterations">0</span></div>
+                <div class="stat-line"><span>Cache</span><span id="perf-path-cache">0% (0/0)</span></div>
+                <div class="stat-line"><span>Miss</span><span id="perf-path-cache-miss">0</span></div>
+            </div>
+            <div id="population-growth-settings" class="stats-grid">
+                <div class="stat-line heading">
+                    <span>Population Growth</span>
+                </div>
+                <div class="stat-line"><span>Decay Delay (hexes)</span><span id="population-decay-delay">0</span></div>
+                <div class="stat-line"><span>Decay Slope</span><span id="population-decay-slope">0</span></div>
+                <div class="stat-line"><span>Growth Floor</span><span id="population-growth-floor">0</span></div>
+            </div>
+            <div id="combat-settings-panel" class="stats-grid">
+                <div class="stat-line heading">
+                    <span>Combat Settings</span>
+                </div>
+                <div class="stat-line"><span>Progress / Loss</span><span id="combat-progress-factor">0</span></div>
+                <div class="stat-line"><span>Defense Softness</span><span id="combat-defense-softness">0</span></div>
+                <div class="stat-line"><span>Leadership Delay</span><span id="combat-lead-delay">0</span></div>
+                <div class="stat-line"><span>Leadership Slope</span><span id="combat-lead-slope">0</span></div>
+                <div class="stat-line"><span>Leadership Floor</span><span id="combat-lead-floor">0</span></div>
+            </div>
+            <div id="player-troop-settings" class="stats-grid">
+                <div class="stat-line heading">
+                    <span>Player Troop Stats</span>
+                </div>
+                <div class="stat-line"><span>Attack</span><span id="combat-player-attack">0</span></div>
+                <div class="stat-line"><span>Defense</span><span id="combat-player-defense">0</span></div>
+                <div class="stat-line"><span>Hit Points</span><span id="combat-player-hp">0</span></div>
+            </div>
+        </div>
+    </div>
+</main>
+
+    <div id="timebank-pause-overlay" class="hidden fixed inset-0 z-[2100] bg-danger/10 pointer-events-none" aria-hidden="true">
+    <div class="pause-watermark text-danger/85 text-[40px] md:text-[64px] font-extrabold uppercase drop-shadow-[0_0_16px_rgba(214,69,69,0.35)]">
+        Paused
+    </div>
+</div>
+
+<div id="timebank-bar" class="fixed left-0 w-full h-[var(--timebank-height)] bottom-[var(--effective-tab-strip-height)] bg-bg-dark/95 border-t border-border/60 shadow-[0_-6px_20px_rgba(0,0,0,0.35)] z-[1190] hidden flex items-center" aria-hidden="true">
+    <div class="flex items-center justify-center gap-3 md:gap-6 px-3 w-full">
+        <div class="timebank-cluster flex items-center gap-3 md:gap-4">
+            <div class="timebank-actions flex items-center gap-1 md:gap-2 flex-nowrap">
+                <button id="timebank-pause-toggle" class="hud-chip bg-accent-blue/25 text-text-primary border border-accent-blue/70 rounded-md px-1h md:px-1h py-0 text-[12px] md:text-[13px] leading-[1.25rem] md:leading-normal cursor-pointer" aria-pressed="false" title="Pause time and bank it.">Pause</button>
+            </div>
+            <span class="timebank-label text-[11px] md:text-[13px] uppercase tracking-wide text-text-muted">Bank <span id="timebank-banked-time" class="font-bold text-accent-blue normal-case">0m</span></span>
+            <div class="timebank-actions flex items-center gap-1 md:gap-2 flex-nowrap">
+                <button id="timebank-spend-1m" class="hud-chip bg-accent-blue/25 text-text-primary border border-accent-blue/70 rounded-md px-1h md:px-1h py-0 text-[12px] md:text-[13px] leading-[1.25rem] md:leading-normal cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">1m</button>
+                <button id="timebank-spend-10m" class="hud-chip bg-accent-blue/25 text-text-primary border border-accent-blue/70 rounded-md px-1h md:px-1h py-0 text-[12px] md:text-[13px] leading-[1.25rem] md:leading-normal cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">10m</button>
+                <button id="timebank-spend-1h" class="hud-chip bg-accent-blue/25 text-text-primary border border-accent-blue/70 rounded-md px-1h md:px-1h py-0 text-[12px] md:text-[13px] leading-[1.25rem] md:leading-normal cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">1h</button>
+            </div>
+            <div class="timebank-actions flex items-center gap-1 md:gap-2 flex-nowrap">
+                <button id="timebank-ad-button" class="hud-chip bg-bg-dark text-text-primary border border-border rounded-md px-1h md:px-1h py-0 text-[12px] md:text-[13px] leading-[1.25rem] md:leading-normal cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed hidden">Ad +30m</button>
+                <span id="timebank-ad-count" class="text-[10px] md:text-[11px] text-text-muted uppercase tracking-wide hidden">0/4</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="timebank-calc-overlay" class="hidden fixed inset-0 bg-bg-darkest/86 backdrop-blur-[2px] z-[2600] justify-center items-center p-1h" aria-hidden="true" inert>
+    <div class="w-[min(360px,88vw)] bg-gradient-to-br from-bg-dark/95 to-bg-darkest/95 border border-border/70 rounded-2xl shadow-[0_30px_52px_rgba(0,0,0,0.6)] text-text-primary flex flex-col gap-2h px-4 py-3h">
+        <div class="text-lg font-bold tracking-wide text-text-bright">Calculating<span class="timebank-calc-dots">...</span></div>
+        <div class="text-xs text-text-secondary">Fast-forwarding the hourglass. Please wait.</div>
+    </div>
+</div>
+
+    <nav id="tab-strip" class="fixed bottom-0 left-0 w-full h-[var(--effective-tab-strip-height)] bg-bg-darkest/95 border-t border-border/60 shadow-[0_-8px_30px_rgba(0,0,0,0.45)] z-[1200] flex gap-2 md:gap-2 px-3 py-1h pb-1h overflow-x-auto" role="tablist">
+    <button class="dock-tab relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary active lg:hidden" data-tab="map" aria-label="Map" title="World Map">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">🌐</span>
+        <span class="sr-only">Map</span>
+    </button>
+    <button class="dock-tab enemy-tab-hidden relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" id="enemy-empire-tab-button" data-tab="enemy-empire" aria-label="Enemy Empires" title="Enemy Empires" aria-hidden="true">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">⚔️</span>
+        <span class="sr-only">Enemy Empires</span>
+    </button>
+    <button class="dock-tab legacy-tab-hidden relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" id="legacy-html-tab-button" data-tab="legacy-html" aria-label="Legacy" title="Legacy" aria-hidden="true">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">👑</span>
+        <span class="sr-only">Legacy</span>
+    </button>
+    <button class="dock-tab age-tab-hidden relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" id="age-html-tab-button" data-tab="age" aria-label="Age" title="Age" aria-hidden="true">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">🪨</span>
+        <span class="sr-only">Age</span>
+    </button>
+    <button class="dock-tab infinity-tab-hidden relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" id="infinity-html-tab-button" data-tab="infinity-html" aria-label="Infinity" title="Infinity" aria-hidden="true">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">♾️</span>
+        <span class="sr-only">Infinity</span>
+    </button>
+    <button class="dock-tab relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" data-tab="research-html" aria-label="Research (HTML)" title="Research (HTML)">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">🧪</span>
+        <span class="sr-only">Research (HTML)</span>
+    </button>
+    <button class="dock-tab relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" data-tab="achievements-html" aria-label="Achievements (HTML)" title="Achievements (HTML)">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">🏆</span>
+        <span class="sr-only">Achievements (HTML)</span>
+    </button>
+    <button class="dock-tab relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" data-tab="quests" aria-label="Quests" title="Quests">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">🧭</span>
+        <span class="sr-only">Quests</span>
+    </button>
+    <button class="dock-tab relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" id="timebank-tab-button" data-tab="timebank" aria-label="Time Bank" title="Time Bank" aria-pressed="false">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">⏳</span>
+        <span class="sr-only">Time Bank</span>
+    </button>
+    <button class="dock-tab relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" data-tab="settings" aria-label="Settings" title="Settings">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">⚙</span>
+        <span class="sr-only">Settings</span>
+    </button>
+    <button id="more-options-button" class="relative flex-1 min-w-0 bg-bg-dark/85 text-text-muted border border-border rounded-[var(--tab-radius)] font-bold text-xs md:text-xs uppercase tracking-wide py-0 px-1 md:py-0 md:px-1 flex items-center justify-center gap-1h cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" aria-label="More options" title="More options" aria-expanded="false" aria-controls="more-options-menu" type="button">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">⋯</span>
+        <span class="sr-only">More</span>
+    </button>
+</nav>
+
+<div id="more-options-menu" class="hidden fixed right-3 bottom-[calc(var(--effective-tab-strip-height)+14px)] z-[1250] min-w-[180px] bg-bg-darkest/95 border border-border/70 rounded-2xl shadow-[0_20px_40px_rgba(0,0,0,0.55)] p-2 flex flex-col gap-2" role="menu" aria-hidden="true">
+    <button class="dock-tab w-full bg-bg-dark/90 text-text-muted border border-border rounded-xl font-bold text-xs uppercase tracking-wide py-2h px-3h flex items-center justify-start gap-2 cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" data-tab="stats" aria-label="Stats" title="Stats" role="menuitem">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">📊</span>
+        <span>Stats</span>
+    </button>
+    <button class="dock-tab w-full bg-bg-dark/90 text-text-muted border border-border rounded-xl font-bold text-xs uppercase tracking-wide py-2h px-3h flex items-center justify-start gap-2 cursor-pointer transition-all duration-200 hover:bg-bg-medium hover:text-text-primary" data-tab="debug" aria-label="Debug" title="Debug" role="menuitem">
+        <span class="tab-icon relative inline-block text-lg leading-none" aria-hidden="true">🛠</span>
+        <span>Debug</span>
+    </button>
+</div>
+
+    <input type="file" id="load-game-file" accept="application/json" style="display:none" />
+<input type="file" id="settings-obfuscated-file" accept=".cqsav,text/plain" style="display:none" />
+
+    <div id="hex-dialog-overlay" class="hidden fixed inset-0 bg-bg-darkest/86 backdrop-blur-[3px] z-[2050] justify-center items-center p-1h">
+    <div class="hex-dialog-card w-[min(640px,92vw)] bg-gradient-to-br from-bg-dark/95 to-bg-darkest/95 border border-border/70 rounded-2xl shadow-[0_30px_52px_rgba(0,0,0,0.6)] flex flex-col gap-4" style="padding: 6px 0;">
+        <div class="hex-dialog-header flex justify-between items-center gap-3 px-1h">
+            <div class="hex-dialog-title text-xl font-bold tracking-wide" id="hex-dialog-name">Player Hex</div>
+            <button class="hex-dialog-close bg-transparent border-none text-text-secondary text-2xl cursor-pointer w-7 h-7 leading-6 text-center p-0 transition-colors hover:text-text-primary" id="hex-dialog-close" aria-label="Close hex dialog">&times;</button>
+        </div>
+        <div class="hex-dialog-body flex flex-col gap-4 px-1h">
+            <div class="hex-dialog-stats grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+                <div class="hex-stat bg-bg-dark/90 border border-border/60 rounded-lg p-3 flex flex-col gap-1h">
+                    <span class="hex-stat-label text-[11px] uppercase tracking-wide text-text-muted">Stationed Troops</span>
+                    <span class="hex-stat-value text-xl font-bold text-text-bright" id="hex-dialog-troops">0</span>
+                    <span class="hex-stat-secondary text-[13px] text-text-secondary" id="hex-dialog-troops-rate">0/s</span>
+                </div>
+                <div class="hex-stat bg-bg-dark/90 border border-border/60 rounded-lg p-3 flex flex-col gap-1h">
+                    <span class="hex-stat-label text-[11px] uppercase tracking-wide text-text-muted">Troops on Border</span>
+                    <span class="hex-stat-value text-xl font-bold text-text-bright" id="hex-dialog-border-troops">0</span>
+                    <span class="hex-stat-secondary text-[13px] text-text-secondary">Active frontlines</span>
+                </div>
+                <div class="hex-stat bg-bg-dark/90 border border-border/60 rounded-lg p-3 flex flex-col gap-1h">
+                    <span class="hex-stat-label text-[11px] uppercase tracking-wide text-text-muted">Population</span>
+                    <span class="hex-stat-value text-xl font-bold text-text-bright" id="hex-dialog-population">0</span>
+                    <button
+                        class="hex-stat-secondary expression-trigger text-[13px] text-text-secondary bg-white/5 border border-transparent rounded-lg cursor-pointer p-1h text-left transition-all hover:border-border/60 hover:text-text-bright hover:bg-white/10 disabled:opacity-45 disabled:cursor-not-allowed"
+                        id="hex-dialog-population-rate"
+                        type="button"
+                        aria-label="Show population growth breakdown"
+                        title="Click to view how this value is calculated"
+                        disabled
+                    >
+                        0/s
+                    </button>
+                    <span class="hex-stat-secondary text-[13px] text-text-secondary hidden" id="hex-dialog-population-rate-static">0/s</span>
+                </div>
+                <div class="hex-stat bg-bg-dark/90 border border-border/60 rounded-lg p-3 flex flex-col gap-1h">
+                    <span class="hex-stat-label text-[11px] uppercase tracking-wide text-text-muted">Population Cap</span>
+                    <span class="hex-stat-value text-xl font-bold text-text-bright" id="hex-dialog-population-cap-soft">Soft: 0</span>
+                    <span class="hex-stat-secondary text-[13px] text-text-secondary" id="hex-dialog-population-cap-hard">Hard: 0</span>
+                </div>
+                <div class="hex-stat bg-bg-dark/90 border border-border/60 rounded-lg p-3 flex flex-col gap-1h">
+                    <span class="hex-stat-label text-[11px] uppercase tracking-wide text-text-muted">Distance to Capital</span>
+                    <span class="hex-stat-value text-xl font-bold text-text-bright" id="hex-dialog-capital-distance-meters">0 m</span>
+                    <span class="hex-stat-secondary text-[13px] text-text-secondary" id="hex-dialog-capital-distance-hexes">0 hex</span>
+                </div>
+                <div class="hex-stat bg-bg-dark/90 border border-border/60 rounded-lg p-3 flex flex-col gap-1h">
+                    <span class="hex-stat-label text-[11px] uppercase tracking-wide text-text-muted">Growth Decay</span>
+                    <span class="hex-stat-value text-xl font-bold text-text-bright" id="hex-dialog-population-decay">100%</span>
+                    <span class="hex-stat-secondary text-[13px] text-text-secondary">Distance-based falloff</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="legacy-death-dialog-overlay" class="hidden fixed inset-0 bg-bg-darkest/86 backdrop-blur-[3px] z-[2070] justify-center items-center p-1h" aria-hidden="true" inert>
+    <div class="legacy-death-dialog-card w-[min(440px,92vw)] bg-gradient-to-br from-bg-dark/95 to-bg-darkest/95 border border-gold/60 rounded-2xl shadow-[0_30px_52px_rgba(0,0,0,0.6)] flex flex-col gap-3h relative text-text-primary" style="padding: 6px 0;" role="dialog" aria-modal="true" aria-labelledby="legacy-death-dialog-title">
+        <button id="legacy-death-dialog-close" class="bg-transparent border-none text-text-secondary text-2xl cursor-pointer w-7 h-7 leading-6 text-center p-0 transition-colors hover:text-text-primary absolute right-1h top-1h" type="button" aria-label="Close legacy death dialog">&times;</button>
+        <div class="legacy-death-dialog-title text-xl font-bold tracking-wide text-gold-bright px-1h" id="legacy-death-dialog-title">A ruler has fallen</div>
+        <div class="legacy-death-dialog-body flex flex-col gap-2h text-sm text-text-secondary px-1h">
+            <div id="legacy-death-dialog-message">The sovereign has passed.</div>
+            <div id="legacy-death-dialog-reign">Reigned for 0 years.</div>
+            <div id="legacy-death-dialog-points">Legacy earned: 0 points.</div>
+            <div id="legacy-death-dialog-event-year">Event year: 0</div>
+        </div>
+        <div class="legacy-death-dialog-actions flex justify-end mt-2 px-1h">
+            <button id="legacy-death-dialog-continue" class="bg-gradient-to-r from-gold-dark to-gold-bright border border-white/25 text-bg-darkest py-2h px-4 rounded-lg font-bold tracking-wide cursor-pointer shadow-[0_8px_20px_rgba(0,0,0,0.35)]" type="button">Continue</button>
+        </div>
+    </div>
+</div>
+
+<div id="rescale-dialog-overlay" class="hidden fixed inset-0 bg-bg-darkest/86 backdrop-blur-[3px] z-[2070] justify-center items-center p-1h" aria-hidden="true" inert>
+    <div class="legacy-death-dialog-card w-[min(440px,92vw)] bg-gradient-to-br from-bg-dark/95 to-bg-darkest/95 border border-gold/60 rounded-2xl shadow-[0_30px_52px_rgba(0,0,0,0.6)] flex flex-col gap-3h relative text-text-primary" style="padding: 6px 0;" role="dialog" aria-modal="true" aria-labelledby="rescale-dialog-title">
+        <button id="rescale-dialog-close" class="bg-transparent border-none text-text-secondary text-2xl cursor-pointer w-7 h-7 leading-6 text-center p-0 transition-colors hover:text-text-primary absolute right-1h top-1h" type="button" aria-label="Close rescale dialog">&times;</button>
+        <div class="legacy-death-dialog-title text-xl font-bold tracking-wide text-gold-bright px-1h" id="rescale-dialog-title">World Rescaled</div>
+        <div class="legacy-death-dialog-body flex flex-col gap-2h text-sm text-text-secondary px-1h">
+            <div id="rescale-dialog-message">Sovereign bureaucratic efficiency has improved, and the realm has been rescaled. Administrative duties are now delegated more effectively.</div>
+            <div><strong>Rescales:</strong> <span id="rescale-dialog-rescale-count">0</span></div>
+            <div><strong>Hex span:</strong> <span id="rescale-dialog-hex-span">0 m → 0 m</span></div>
+            <div><strong>Rescaling rounding errors — Player area:</strong> <span id="rescale-dialog-player-area">0 m² → 0 m²</span></div>
+            <div><strong>Pop cap per hex:</strong> <span id="rescale-dialog-pop-cap-hard">0 → 0</span></div>
+            <div><strong>Troop traverse:</strong> <span id="rescale-dialog-traverse-seconds">0 seconds → 0 seconds</span></div>
+            <div id="rescale-dialog-event-year">Event year: 0</div>
+        </div>
+        <div class="legacy-death-dialog-actions flex justify-end mt-2 px-1h">
+            <button id="rescale-dialog-continue" class="bg-gradient-to-r from-gold-dark to-gold-bright border border-white/25 text-bg-darkest py-2h px-4 rounded-lg font-bold tracking-wide cursor-pointer shadow-[0_8px_20px_rgba(0,0,0,0.35)]" type="button">Continue</button>
+        </div>
+    </div>
+</div>
+
+<div id="legacy-html-history-overlay" class="hidden fixed inset-0 bg-bg-darkest/86 backdrop-blur-[3px] z-[2075] justify-center items-center p-1h" aria-hidden="true" inert>
+    <div class="w-[min(420px,92vw)] max-h-[85vh] bg-gradient-to-br from-bg-dark/95 to-bg-darkest/95 border border-gold/40 rounded-2xl shadow-[0_30px_52px_rgba(0,0,0,0.6)] flex flex-col gap-3h text-text-primary" style="padding: 6px 0;" role="dialog" aria-modal="true" aria-labelledby="legacy-html-history-title">
+        <div class="flex items-center justify-between px-1h">
+            <div class="text-lg font-bold tracking-wide text-gold-bright" id="legacy-html-history-title">📜 Dynasty History</div>
+            <button id="legacy-html-history-close" class="bg-transparent border-none text-text-secondary text-2xl cursor-pointer w-8 h-8 leading-6 text-center p-0 transition-colors hover:text-text-bright" type="button" aria-label="Close dynasty history">&times;</button>
+        </div>
+        <div id="legacy-html-history-list" class="flex flex-col gap-2h px-1h overflow-y-auto max-h-[70vh]"></div>
+    </div>
+</div>
+
+<div id="legacy-trait-dialog-overlay" class="hidden fixed inset-0 bg-bg-darkest/86 backdrop-blur-[3px] z-[2080] justify-center items-center p-1h" aria-hidden="true" inert>
+    <div class="legacy-trait-dialog-card w-[min(560px,92vw)] max-h-[88vh] bg-gradient-to-br from-bg-dark/95 to-bg-darkest/95 border border-border/70 rounded-2xl shadow-[0_30px_52px_rgba(0,0,0,0.55)] text-text-primary flex flex-col gap-3h" style="padding: 6px 0;" role="dialog" aria-modal="true" aria-labelledby="legacy-trait-dialog-title">
+        <div class="flex items-start justify-between gap-3 px-1h">
+            <div>
+                <div class="text-[11px] tracking-wide uppercase text-text-muted"></div>
+                <div class="text-xl font-bold tracking-wide text-text-bright" id="legacy-trait-dialog-title">Trait</div>
+                <div class="text-xs text-text-muted" id="legacy-trait-dialog-subtitle"></div>
+            </div>
+            <button id="legacy-trait-dialog-close" class="bg-transparent border border-white/10 text-text-secondary text-xl cursor-pointer w-8 h-8 leading-5 text-center rounded-lg transition-all hover:text-text-bright hover:border-white/30 hover:bg-white/10" type="button" aria-label="Close trait details">&times;</button>
+        </div>
+        <div class="flex flex-col gap-2h px-1h pb-2h overflow-y-auto">
+            <div id="legacy-trait-dialog-description" class="text-sm leading-relaxed text-text-secondary"></div>
+            <div id="legacy-trait-dialog-effect" class="text-sm text-gold-bright"></div>
+            <div id="legacy-trait-dialog-prereqs" class="text-xs text-text-muted"></div>
+            <button id="legacy-trait-dialog-status" class="min-w-[120px] text-xs font-bold uppercase tracking-wide rounded-lg px-3h py-2h border transition-all self-end" type="button" aria-disabled="true">—</button>
+        </div>
+    </div>
+</div>
+
+<div id="research-tech-dialog-overlay" class="hidden fixed inset-0 bg-bg-darkest/86 backdrop-blur-[3px] z-[2080] justify-center items-center p-1h" aria-hidden="true" inert>
+    <div class="research-tech-dialog-card w-[min(560px,92vw)] max-h-[88vh] bg-gradient-to-br from-bg-dark/95 to-bg-darkest/95 border border-border/70 rounded-2xl shadow-[0_30px_52px_rgba(0,0,0,0.55)] text-text-primary flex flex-col gap-3h" style="padding: 6px 0;" role="dialog" aria-modal="true" aria-labelledby="research-tech-dialog-title">
+        <div class="flex items-start justify-between gap-3 px-1h">
+            <div>
+                <div class="text-[11px] tracking-wide uppercase text-text-muted"></div>
+                <div class="text-xl font-bold tracking-wide text-text-bright" id="research-tech-dialog-title">Tech</div>
+                <div class="text-xs text-text-muted" id="research-tech-dialog-subtitle"></div>
+            </div>
+            <button id="research-tech-dialog-close" class="bg-transparent border border-white/10 text-text-secondary text-xl cursor-pointer w-8 h-8 leading-5 text-center rounded-lg transition-all hover:text-text-bright hover:border-white/30 hover:bg-white/10" type="button" aria-label="Close research details">&times;</button>
+        </div>
+        <div class="flex flex-col gap-2h px-1h pb-2h overflow-y-auto">
+            <div id="research-tech-dialog-description" class="text-sm leading-relaxed text-text-secondary"></div>
+            <div class="flex items-center justify-between gap-2">
+                <div id="research-tech-dialog-prereqs" class="text-xs text-text-muted"></div>
+                <button id="research-tech-dialog-status" class="min-w-[120px] text-xs font-bold uppercase tracking-wide rounded-lg px-3h py-2h border transition-all self-end" type="button" aria-disabled="true">—</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="expression-viewer-overlay" class="hidden fixed inset-0 bg-bg-darkest/86 backdrop-blur z-[2100] justify-center items-center p-1h" aria-hidden="true">
+    <div class="expression-dialog w-[min(640px,95vw)] max-h-[80vh] bg-gradient-to-br from-bg-dark/95 to-bg-darkest/95 border border-border/70 rounded-2xl shadow-[0_35px_55px_rgba(0,0,0,0.65)] flex flex-col gap-3" style="padding: 6px 0;" role="dialog" aria-modal="true" aria-labelledby="expression-viewer-title">
+        <div class="expression-dialog-header flex justify-between items-center gap-3 px-1h">
+            <div class="expression-dialog-title text-lg font-semibold" id="expression-viewer-title">Expression</div>
+            <button class="expression-dialog-close bg-transparent border-none text-text-muted text-2xl cursor-pointer w-7 h-7 leading-6 p-0 text-center transition-colors hover:text-text-bright" id="expression-viewer-close" aria-label="Close expression viewer">&times;</button>
+        </div>
+        <div class="expression-dialog-body overflow-auto max-h-[calc(80vh-80px)] px-1h">
+            <div id="expression-viewer-content" class="expression-viewer-content flex flex-col gap-2"></div>
+        </div>
+    </div>
+</div>
+
+
+</body>
+</html>
+<script defer src="https://static.itch.io/htmlgame.js" type="text/javascript"></script>
